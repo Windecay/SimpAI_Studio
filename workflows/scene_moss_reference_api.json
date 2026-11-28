@@ -1,0 +1,134 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 672,
+      "height": 896,
+      "cfg": 3.0,
+      "steps": 50,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 2.5,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "sgm_uniform",
+      "video_duration": 0,
+      "ip_image4": "None",
+      "ip_image5": "None",
+      "ip_image6": "None",
+      "ip_image7": "None"
+    }
+  },
+  "2": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 0}
+  },
+  "3": {
+    "class_type": "UNETLoader",
+    "_meta": {"title": "base_model"},
+    "inputs": {"unet_name": "moss_image_sft_int8_convrot.safetensors", "weight_dtype": "default"}
+  },
+  "4": {
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "clip_model"},
+    "inputs": {"clip_name": "qwen3.5_9b_w4a8_gptq.safetensors", "type": "moss_image", "device": "default"}
+  },
+  "5": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "vae_model"},
+    "inputs": {"vae_name": "flux2-vae.safetensors"}
+  },
+  "6": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "i2i_inpaint_image"},
+    "inputs": {"image": "None"}
+  },
+  "7": {
+    "class_type": "ResizeAndPadImage",
+    "inputs": {
+      "image": ["6", 0], "target_width": 448, "target_height": 448,
+      "padding_color": "white", "interpolation": "lanczos"
+    }
+  },
+  "9": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_1"}, "inputs": {"model": ["3", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "10": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_2"}, "inputs": {"model": ["9", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "11": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_3"}, "inputs": {"model": ["10", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "12": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_4"}, "inputs": {"model": ["11", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "13": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_5"}, "inputs": {"model": ["12", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "14": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_6"}, "inputs": {"model": ["13", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "15": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_7"}, "inputs": {"model": ["14", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "16": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_8"}, "inputs": {"model": ["15", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "17": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_9"}, "inputs": {"model": ["16", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "18": {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "lora_10"}, "inputs": {"model": ["17", 0], "lora_name": "placeholder.safetensors", "strength_model": 0}},
+  "simpai_lora_stack_main": {
+    "class_type": "SimpAILoraStack",
+    "_meta": {"title": "lora_stack_main"},
+    "inputs": {"model": ["18", 0], "clip": ["4", 0], "stack_json": "{\"version\":1,\"items\":[]}", "branch": "main"}
+  },
+  "19": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {"width": ["1", 6], "height": ["1", 7], "batch_size": 1}
+  },
+  "20": {
+    "class_type": "SimpAIMossCharRefLayout",
+    "inputs": {"model": ["simpai_lora_stack_main", 0], "latent": ["19", 0]}
+  },
+  "21": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "images.image_0": ["7", 0],
+      "prompt": ["1", 0], "edit_format": "ai-toolkit", "image_strength": 1.0
+    }
+  },
+  "22": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": ["simpai_lora_stack_main", 1], "vae": ["5", 0], "images.image_0": ["7", 0],
+      "prompt": ["1", 29], "edit_format": "ai-toolkit", "image_strength": 1.0
+    }
+  },
+  "23": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"clip": ["simpai_lora_stack_main", 1], "text": ["1", 29]}
+  },
+  "24": {
+    "class_type": "SimpAIMossCharRefGuider",
+    "inputs": {
+      "model": ["20", 0], "positive": ["21", 0], "negative": ["22", 0],
+      "negative_no_reference": ["23", 0], "cfg": ["1", 8], "reference_guidance": ["1", 12]
+    }
+  },
+  "25": {"class_type": "BasicScheduler", "inputs": {"model": ["20", 0], "steps": ["1", 9], "scheduler": ["1", 31], "denoise": 1.0}},
+  "26": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": ["1", 30]}},
+  "27": {"class_type": "RandomNoise", "inputs": {"noise_seed": ["2", 0]}},
+  "28": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {"noise": ["27", 0], "guider": ["24", 0], "sampler": ["26", 0], "sigmas": ["25", 0], "latent_image": ["19", 0]}
+  },
+  "29": {"class_type": "VAEDecode", "inputs": {"samples": ["28", 0], "vae": ["5", 0]}},
+  "30": {"class_type": "SaveImageWebsocket", "_meta": {"title": "result_image1"}, "inputs": {"images": ["29", 0]}}
+}

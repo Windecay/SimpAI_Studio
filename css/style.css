@@ -19351,13 +19351,6 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   font-size: 13px !important;
 }
 
-#identity_dialog_content #identity_input_row[data-identity-stage-visible="true"] {
-  display: grid !important;
-  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr) !important;
-  align-items: start !important;
-  gap: 16px !important;
-}
-
 #identity_dialog_content #identity_input_row > .column {
   min-width: 0 !important;
   padding: 14px !important;
@@ -19389,16 +19382,6 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   overflow: visible !important;
 }
 
-#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(132px, auto) !important;
-  align-items: center !important;
-  gap: 12px !important;
-  padding: 0 !important;
-}
-
 #identity_dialog_content .identity-action-row input {
   min-height: 42px !important;
 }
@@ -19408,39 +19391,10 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   white-space: normal !important;
 }
 
-#identity_dialog_content [data-identity-stage-visible="false"],
-#identity_dialog_content .simpleai-identity-stage-hidden {
+/* Keep Gradio controls mounted without leaving empty rows in the card. */
+#identity_dialog_content .identity-control-hidden,
+#identity_dialog_content .identity-action-row:not(:has(button:not(.identity-control-hidden))) {
   display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  max-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: 0 !important;
-  overflow: hidden !important;
-}
-
-#identity_vcode_row:has(#identity_vcode_input.hidden):has(#identity_verify_button.hidden),
-#identity_phrase_row:has(#identity_phrase_input.hidden):has(#identity_phrases_set_button.hidden):has(#identity_phrases_confirm_button.hidden):has(#identity_confirm_button.hidden):has(#identity_unbind_button.hidden) {
-  display: none !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: hidden !important;
-}
-
-#identity_dialog_content .tabitem > .row[style*="display: none"],
-#identity_dialog_content .tabitem > .row.hide,
-#identity_dialog_content .tabitem > .row.hidden {
-  display: none !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: hidden !important;
 }
 
 #identity_dialog_content > .tab-wrapper,
@@ -19583,20 +19537,6 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
     width: calc(100vw - 24px) !important;
     min-width: calc(100vw - 24px) !important;
     max-height: calc(100vh - 80px) !important;
-  }
-
-  #identity_dialog_content #identity_input_row[data-identity-stage-visible="true"] {
-    grid-template-columns: 1fr !important;
-  }
-
-  #identity_dialog_content #identity_input_row {
-    grid-template-columns: 1fr !important;
-  }
-
-  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
-    grid-template-columns: 1fr !important;
   }
 }
 
@@ -19796,6 +19736,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   grid-template-columns: minmax(0, 1fr) auto !important;
   align-items: start !important;
   gap: 18px !important;
+  box-sizing: border-box !important;
   padding: 14px 16px !important;
   margin: 0 !important;
   border: 1px solid color-mix(in srgb, var(--border-color-primary) 82%, transparent) !important;
@@ -19856,6 +19797,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 #identity_dialog_content .identity_flow_note {
   margin: 0 !important;
   padding: 11px 14px !important;
+  box-sizing: border-box !important;
   border-radius: 10px !important;
   border: 1px solid color-mix(in srgb, var(--border-color-primary) 76%, transparent) !important;
   background: color-mix(in srgb, var(--background-fill-secondary) 58%, transparent) !important;
@@ -19873,7 +19815,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   line-height: 1.45 !important;
 }
 
-#identity_dialog_content #identity_multi_user_activation_guard {
+#identity_dialog_content #identity_multi_user_activation_guard:not(.identity-control-hidden) {
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
@@ -20045,7 +19987,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   overflow-wrap: anywhere;
 }
 
-#identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"] {
+#identity_dialog_content #identity_input_row:not(.identity-control-hidden) {
   display: grid !important;
   grid-template-columns: minmax(220px, 280px) minmax(280px, 1fr) !important;
   align-items: stretch !important;
@@ -20131,17 +20073,18 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   width: 100% !important;
 }
 
-#identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
+#identity_dialog_content .identity-action-row:not(.identity-control-hidden) {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, max-content) !important;
   align-items: center !important;
-  gap: 12px !important;
+  gap: 8px 10px !important;
   width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
   padding: 0 !important;
   margin: 0 !important;
+  overflow: hidden !important;
 }
 
 #identity_dialog_content .identity-action-row button,
@@ -20200,20 +20143,6 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   box-sizing: border-box !important;
 }
 
-#identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-#identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, max-content) !important;
-  column-gap: 10px !important;
-  row-gap: 8px !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-}
-
 #identity_dialog_content #identity_change_button,
 #identity_dialog_content #identity_verify_button,
 #identity_dialog_content #identity_phrases_set_button,
@@ -20227,9 +20156,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
 }
 
 @media (max-width: 900px) {
-  #identity_dialog_content #identity_id_display_row,
-  #identity_dialog_content #identity_vcode_row,
-  #identity_dialog_content #identity_phrase_row {
+  #identity_dialog_content .identity-action-row:not(.identity-control-hidden) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
@@ -20259,11 +20186,7 @@ html.simpai-gallery-frost-enabled #final_gallery.simpleai-gallery-frost-multi:no
   }
 
   #identity_dialog_content .identity-summary-row,
-  #identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"],
-  #identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
+  #identity_dialog_content #identity_input_row:not(.identity-control-hidden) {
     grid-template-columns: 1fr !important;
   }
 
@@ -22288,18 +22211,6 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   display: none !important;
 }
 
-#identity_dialog_content .form:has(> #identity_stage_state),
-#identity_dialog_content .block:has(> #identity_stage_state) {
-  display: none !important;
-  min-height: 0 !important;
-  max-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  overflow: hidden !important;
-  flex: 0 0 0 !important;
-}
-
 #missing_model_modal_header {
   display: flex !important;
   align-items: center;
@@ -23475,12 +23386,8 @@ html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not(
   }
 
   #identity_dialog_content .identity-summary-row,
-  #identity_dialog_content #identity_input_row.identity-bind-grid[data-identity-stage-visible="true"],
-  #identity_dialog_content .identity-action-row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_id_display_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_vcode_row[data-identity-stage-visible="true"],
-  #identity_dialog_content #identity_phrase_row[data-identity-stage-visible="true"] {
-    display: grid !important;
+  #identity_dialog_content #identity_input_row,
+  #identity_dialog_content .identity-action-row {
     grid-template-columns: minmax(0, 1fr) !important;
     gap: 10px !important;
     width: 100% !important;
@@ -23489,6 +23396,7 @@ html:not(.simpai-preset-nav-active) #scene_panel.simpai-source-videos-first:not(
   }
 
   #identity_dialog_content .identity-summary-row {
+    display: grid !important;
     padding: 12px !important;
   }
 

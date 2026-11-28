@@ -56,6 +56,7 @@ def _register_runtime_preview_nodes():
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add("SimpAIWanVaceLatentLoop")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("VOSR2Upscale")
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add("SimpAIRelayVSRVideo")
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update({"KandinskyImageSRUpscale", "KandinskyVideoSRUpscale"})
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
     install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
     install_progress_profile_reset_filter(comfyclient_pipeline)
@@ -63,6 +64,7 @@ def _register_runtime_preview_nodes():
 
 _register_runtime_preview_nodes()
 comfyclient_pipeline.SAVE_NODE_CLASS_TYPES.add("SimpAIRelayVSRSaveVideo")
+comfyclient_pipeline.SAVE_NODE_CLASS_TYPES.update({"SimpAIKandinskySaveImage", "SimpAIKandinskySaveVideo"})
 
 
 class ComfyTask:
@@ -102,8 +104,9 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if task_method_l == "scene_idol" and default_params.get("var_number7") in (None, 0):
         # Older inputs may carry the hidden control's zero. Use the workflow default.
         default_params.pop("var_number7", None)
-    if task_method_l in ("scene_vosr2", "scene_vosr2_video", "scene_relayvsr_x2", "scene_relayvsr_x4"):
-        # The node reports actual decoded frames and stages, independent of steps.
+    if task_method_l in ("scene_vosr2", "scene_vosr2_video", "scene_relayvsr_x2", "scene_relayvsr_x4",
+                         "scene_kandinsky_image_x2", "scene_kandinsky_image_x4", "scene_kandinsky_video_x2"):
+        # Upscale progress is reported by the node, independently of sampler steps.
         total_steps = None
     if "infinitetalk" in task_method_l:
         audio = default_params.get("audio")
@@ -145,6 +148,10 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     comfy_params = ComfyTaskParams(default_params, user_did)
     if task_method_l in ("scene_relayvsr_x2", "scene_relayvsr_x4"):
         comfy_params.update_mapping_rule("video", "LoadVideo:RelayVSR Source:file")
+    if task_method_l in ("scene_kandinsky_image_x2", "scene_kandinsky_image_x4"):
+        comfy_params.update_mapping_rule("i2i_inpaint_image", "LoadImage:Kandinsky Image Source:image")
+    elif task_method_l == "scene_kandinsky_video_x2":
+        comfy_params.update_mapping_rule("video", "LoadVideo:Kandinsky Video Source:file")
     if sampling_sigmas is not None:
         comfy_params.update_mapping_rule("sampling_sigmas", "ManualSigmas:SimpAI Sampling Sigmas:sigmas")
         comfy_params.update_mapping_rule("use_sampling_sigmas", "ComfySwitchNode:SimpAI Sampling Branch:switch")
@@ -187,6 +194,8 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("base_model", "UNETLoader:base_model:unet_name")
         comfy_params.update_mapping_rule("clip_model", "CLIPLoader:clip_model:clip_name")
         comfy_params.update_mapping_rule("vae_model", "VAELoader:vae_model:vae_name")
+    if task_method_l == "scene_moss_reference":
+        comfy_params.update_mapping_rule("cfg", "SceneInput:SceneInput:cfg")
     if "scene_" in task_method_l or "flux3" in task_method_l or task_class in ("Qwen", "Wan", "Z-image"):
         comfy_params.update_mapping_rule("sampler", "GeneralInput:GeneralInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "GeneralInput:GeneralInput:scheduler")

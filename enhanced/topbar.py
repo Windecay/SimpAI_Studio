@@ -276,6 +276,7 @@ PRESET_STORE_ORDER = [
     "MOSS-Image",
     "MOSS-Turbo",
     "MOSS-Edit",
+    "MOSS-Reference",
     "Krea2-Turbo",
     "Krea2-ImageEdit",
     "Krea2-A2R",
@@ -390,7 +391,7 @@ def _canonicalize_preset_name(name):
     if is_user_preset and base_name:
         return f'{base_name}.'
     return {"moss-image": "MOSS-Image", "moss-turbo": "MOSS-Turbo",
-            "moss-edit": "MOSS-Edit"}.get(base_name.casefold(), base_name)
+            "moss-edit": "MOSS-Edit", "moss-reference": "MOSS-Reference"}.get(base_name.casefold(), base_name)
 
 def _has_preset_model_probe(preset_name, user_did=None):
     if not isinstance(preset_name, str) or not preset_name:
@@ -1968,6 +1969,10 @@ def _build_canvas_media_capability(
         capability["task_modes"] = task_modes
     if interaction_requirements:
         capability["interaction_requirements"] = interaction_requirements
+    if director.get("automatic_routing") is False:
+        capability["automatic_routing"] = False
+    if director.get("prompt_mode") == "none":
+        capability["prompt_mode"] = "none"
     return capability
 
 
@@ -2199,7 +2204,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         except Exception:
             pass
 
-        if not preset_category and str(task_method).lower().startswith("moss_image"):
+        if not preset_category and str(task_method).lower().removeprefix("scene_").startswith(("moss_image", "moss_reference")):
             preset_category = "MOSS"
         if not preset_category and str(task_method).lower().removeprefix("scene_") in {
             "anima_aio", "anima_rgba", "anima_reference", "anima_character_reference", "anima_style_reference",
@@ -2850,8 +2855,13 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_input_image7 = util.normalize_gradio_image_value(scene_input_image7, image_mode="RGBA")
         scene_input_image8 = util.normalize_gradio_image_value(scene_input_image8, image_mode="RGBA")
         scene_canvas_mask_disabled = _resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme)
-        if scene_canvas_image is None and meta_parser.get_scene_task_method(scene_frontend, scene_theme) == "idol":
-            raise gr.Error(meta_parser.localized_ui_text(state_params, "Upload a source image to generate a 3D model."))
+        if scene_canvas_image is None:
+            message = {
+                "idol": "Upload a source image to generate a 3D model.",
+                "moss_reference": "Upload a character reference image.",
+            }.get(meta_parser.get_scene_task_method(scene_frontend, scene_theme))
+            if message:
+                raise gr.Error(meta_parser.localized_ui_text(state_params, message))
 
         scene_additional_prompt = f'{scene_additional_prompt}{scene_additional_prompt_2}'
         if util.is_chinese(scene_additional_prompt) and not scene_frontend['task_method'][scene_theme].lower().endswith('_cn'):

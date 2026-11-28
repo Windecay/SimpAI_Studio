@@ -1,0 +1,73 @@
+{
+  "supported_tasks": ["video_upscale"],
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "video",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Flux",
+    "scene_frontend": {
+      "version": "v1.1",
+      "theme": ["Kandinsky Video Upscale 2x (Experimental)"],
+      "theme_title": "Kandinsky Video Upscale (Experimental)",
+      "task_method": {"Kandinsky Video Upscale 2x (Experimental)": "kandinsky_video_x2"},
+      "director_capability": {
+        "automatic_routing": false, "prompt_mode": "none",
+        "image_policy": "forbidden", "min_images": 0, "max_images": 0,
+        "image_modes": ["none"], "video_policy": "required", "video_modes": ["explicit"],
+        "audio_policy": "forbidden", "audio_output": "source_audio",
+        "duration_strategy": "video_min", "mixed_segments": false
+      },
+      "disvisible": [
+        "scene_canvas_image", "scene_additional_prompt", "scene_additional_prompt_2",
+        "scene_aspect_ratio", "scene_image_number", "scene_use_lora",
+        "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+        "scene_reference_video", "scene_reference_video2", "scene_audio", "scene_audio2",
+        "scene_audio3", "scene_video_duration", "scene_base_model", "scene_refiner_model",
+        "scene_steps", "scene_var_number2", "scene_var_number3", "scene_var_number4",
+        "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "sam3_input_video", "sam3_mask_video"
+      ],
+      "prompt": {"Kandinsky Video Upscale 2x (Experimental)": ""},
+      "var_number_title": "Temporal window (frames)",
+      "var_number": {"Kandinsky Video Upscale 2x (Experimental)": 121},
+      "var_number_min": 17, "var_number_max": 361, "var_number_step": 8,
+      "var_number8_title": "Duration limit (seconds) [0 = no limit]",
+      "var_number8": {"Kandinsky Video Upscale 2x (Experimental)": 0},
+      "var_number8_min": 0, "var_number8_max": 10000, "var_number8_step": 1,
+      "aspect_ratio": ["origin|Original"],
+      "resolution_control": {
+        "mode": "input_passthrough", "source": "scene_video",
+        "interactive": false, "frontend_preprocess": false
+      }
+    }
+  },
+  "default_model": "None",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_clip_model": "Default (model)",
+  "default_loras": [["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]],
+  "default_cfg_scale": 1,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "simple",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "origin|Original",
+  "default_image_number": 1,
+  "default_overwrite_step": 1,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,kandinsky-sr/kandinsky6_vsr_2.0_distilled2steps_int8_convrot.safetensors,1956649720,cc5a360022a89475e436fa321ab4fc7d8f6eb42fec33c0a4c06ddf0689f75d83,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/diffusion_models/kandinsky-sr/kandinsky6_vsr_2.0_distilled2steps_int8_convrot.safetensors,https://huggingface.co/PedroMarinhoDev/Kandinsky-SR-ComfyUI/resolve/53fcfe9ef88b3ded2e7dc8af6b4f86184abd0786/diffusion_models/kandinsky-sr/kandinsky6_vsr_2.0_distilled2steps_int8_convrot.safetensors",
+    "vae,kandinsky-sr/kandinsky_kvae_3d_2.0_t4s16_bf16.safetensors,3477800630,f53d23209308a04f0a0732ee362fb9930b8190ae86ca0a46360d7585c33be491,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/kandinsky-sr/kandinsky_kvae_3d_2.0_t4s16_bf16.safetensors,https://huggingface.co/PedroMarinhoDev/Kandinsky-SR-ComfyUI/resolve/53fcfe9ef88b3ded2e7dc8af6b4f86184abd0786/vae/kandinsky-sr/kandinsky_kvae_3d_2.0_t4s16_bf16.safetensors",
+    "latent_upscale_models,kandinsky-sr/kandinsky6_sr_latent_upscaler_x2_bf16.safetensors,1525535752,809b689e6c7d0a77c09407b840056a2392ed879c5721330302c8d8817af29de0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/latent_upscale_models/kandinsky-sr/kandinsky6_sr_latent_upscaler_x2_bf16.safetensors,https://huggingface.co/PedroMarinhoDev/Kandinsky-SR-ComfyUI/resolve/53fcfe9ef88b3ded2e7dc8af6b4f86184abd0786/latent_upscale_models/kandinsky-sr/kandinsky6_sr_latent_upscaler_x2_bf16.safetensors"
+  ]
+}

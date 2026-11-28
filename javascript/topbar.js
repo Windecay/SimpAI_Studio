@@ -7021,11 +7021,13 @@ function syncSceneMediaSlotLabels(state) {
         scene_video: "Video (Upload)",
         scene_reference_video: "Reference Video (Upload)",
         scene_reference_video2: "Additional Reference Video (Upload)",
+        scene_canvas_image: "Upload and canvas(1)",
         scene_input_image1: "Upload prompt image(2)",
     };
     Object.entries(defaults).forEach(([id, fallback]) => {
-        const root = document.getElementById(id);
-        if (id === "scene_input_image1" && !labels[id] && !root?.hasAttribute("data-sai-scene-slot-label")) return;
+        const customImageSlot = id === "scene_canvas_image" || id === "scene_input_image1";
+        const root = document.getElementById(id === "scene_canvas_image" ? "scene_canvas" : id);
+        if (customImageSlot && !labels[id] && !root?.hasAttribute("data-sai-scene-slot-label")) return;
         const label = root?.querySelector('[data-testid="block-label"], .label-wrap, label');
         if (!label || !document.createTreeWalker) return;
         const walker = document.createTreeWalker(label, 4);
@@ -7036,7 +7038,7 @@ function syncSceneMediaSlotLabels(state) {
             const translated = String(state?.__lang || "en").toLowerCase() === "en" ? key : topbarTranslateText(key);
             if (text.textContent !== translated) text.textContent = translated;
             (text.parentElement || label).setAttribute("data-original-text", key);
-            if (id === "scene_input_image1") root.toggleAttribute("data-sai-scene-slot-label", !!labels[id]);
+            if (customImageSlot) root.toggleAttribute("data-sai-scene-slot-label", !!labels[id]);
             break;
         }
     });
@@ -11107,7 +11109,7 @@ function schedulePresetStoreViewportRefresh() {
 
 function inferPresetStoreEngine(name) {
     const text = String(name || "").toLowerCase();
-    if (/(?:^|[^a-z0-9])(?:moss[ ._-]?(?:image|turbo|edit)|kromoss)(?:[^a-z0-9]|$)/.test(text)) return "MOSS";
+    if (/(?:^|[^a-z0-9])(?:moss[ ._-]?(?:image|turbo|edit|reference)|kromoss)(?:[^a-z0-9]|$)/.test(text)) return "MOSS";
     if (/(?:^|[^a-z0-9])anima(?:[^a-z0-9]|$)/.test(text)) return "Anima";
     if (text.includes("wan")) return "Wan";
     if (text.includes("flux") || text.includes("nf4") || text.includes("fp4")) return "Flux";

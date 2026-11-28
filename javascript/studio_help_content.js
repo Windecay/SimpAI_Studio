@@ -3291,6 +3291,48 @@
         }
       ]
     },
+    "MOSS-Reference": {
+      "intro": {
+        "en": "Generate a new scene for one anime character. The reference supplies the face, hair, and outfit; the prompt sets the pose, framing, and setting. No separate style-reference mode.",
+        "cn": "用一张二次元角色图生成新场景。角色的脸、发型和服装来自参考图，动作、构图与背景由提示词决定。没有单独的画风参考模式。"
+      },
+      "inputs": {
+        "en": "Use a single character against a plain white background, preferably in a neutral pose. No mask or second image is needed. The workflow fits the reference into a 448 × 448 white square.",
+        "cn": "建议上传白底、自然站姿的单人图，无需蒙版或第二张图。工作流会等比缩放并用白底填到 448×448。"
+      },
+      "keyPoint": {
+        "en": "LoRA 1 defaults to the character-reference LoRA at weight 1.0. Use slot 2 or later for compatible style LoRAs. Write comma-separated English tags for the new scene. Reference guidance is separate: 2.5 favors likeness, and 1.0 gives the prompt more freedom. Check the eyes, accessories, and requested pose.",
+        "cn": "角色参考 LoRA 默认在第 1 位，权重为 1.0；画风 LoRA 从第 2 位起添加。用逗号分隔的英文标签描述新场景。角色参考引导单独调节：2.5 偏向角色相似度，1.0 更容易跟随提示词。注意检查眼睛、配饰和所要求的动作。"
+      }
+    },
+    "Kandinsky-ImageSR": {
+      "intro": {
+        "en": "Enlarge one image by 2x or 4x. Both themes use the same model.",
+        "cn": "将一张图像放大 2 倍或 4 倍。两个主题使用同一套模型。"
+      },
+      "inputs": {
+        "en": "One source image. No mask or prompt is needed.",
+        "cn": "只需原图，无需蒙版或提示词。"
+      },
+      "keyPoint": {
+        "en": "Detail strength defaults to 4. Lower it to stay closer to the source. Check small text, line art, and faces after upscaling.",
+        "cn": "细节强度默认 4。调低可让结果更接近原图；放大后注意检查小字、线条和人脸。"
+      }
+    },
+    "Kandinsky-VideoSR": {
+      "intro": {
+        "en": "Experimental 2x video upscaling. Exports MP4 with the source frame count, nominal frame rate, and audio.",
+        "cn": "实验性 2 倍视频放大。输出 MP4，保留源视频的帧数、标称帧率和音轨。"
+      },
+      "inputs": {
+        "en": "One source video. No separate audio or prompt is needed.",
+        "cn": "只需源视频，无需单独提供音频或提示词。"
+      },
+      "keyPoint": {
+        "en": "The default window is 121 frames. A shorter window can reduce memory use; check motion at joins. Set a duration limit to try the start of a long video. Variable-frame-rate sources are exported at a constant rate.",
+        "cn": "默认每段处理 121 帧。缩短分段可减少内存压力，建议检查各段交界处的动作。长视频可设置时长上限，试处理开头一段。可变帧率源视频会按恒定帧率输出。"
+      }
+    },
     "Qwen2.1-Edit": {
       "intro": {
         "en": "Upload an image and describe how to edit it, or combine several images using clearly assigned references. Without any image, this preset generates a new image from text.",

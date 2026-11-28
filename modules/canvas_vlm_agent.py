@@ -475,6 +475,8 @@ def _canvas_vlm_prompt_rewrite_target_family(target_key, target=None):
         return "natural_zh"
     if key == "moss_image":
         return "moss_image"
+    if key == "moss_reference":
+        return "moss_reference"
     if key == "flux3_natural" or "flux3" in task_method or "flux 3" in target_name:
         return "flux3"
     if key == "qwen_natural" or key.startswith("qwen"):
@@ -663,6 +665,12 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
         format_rule = "Final prompt: coherent natural-language video prompt; preserve Chinese for Chinese user requests. Emphasize visible motion, camera movement, temporal continuity, and stable subject details."
     elif target_family == "audio":
         format_rule = "Final prompt: coherent natural-language audio-effects prompt; preserve Chinese for Chinese user requests. Describe audible events synchronized to visible video, without camera or visual-style instructions."
+    elif target_family == "moss_reference":
+        format_rule = (
+            "Final prompt: short comma-separated English scene tags for one anime character. "
+            "Describe the new action, pose, expression, setting, framing and lighting. "
+            "The reference supplies appearance; do not invent appearance details or add image-number markers."
+        )
     elif target_family == "moss_image":
         format_rule = (
             "Final prompt: a detailed MOSS-Image caption in the language of the user's original request. "

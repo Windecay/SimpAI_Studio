@@ -115,9 +115,10 @@ def guidance(entry, spec, lang, context=None):
     if compiler:
         target["prompt_compiler"] = compiler
     key = target["key"]
-    english = key in {"anima_aio", "sdxl_danbooru", "flux_t5_en", "natural_en"}
+    english = key in {"anima_aio", "moss_reference", "sdxl_danbooru", "flux_t5_en", "natural_en"}
     formats = {
         "anima_aio": "english_tags_and_nltags",
+        "moss_reference": "english_scene_tags",
         "sdxl_danbooru": "english_danbooru_tags",
         "minimax_h3": "structured_multimodal",
         "minimax_music3": "structured_music_caption",
@@ -167,6 +168,17 @@ def guidance(entry, spec, lang, context=None):
             )
     if key == "moss_image":
         result.update(preferred_prompt_language="user_language", format="caption_or_layout_json", requires_final_prompt=False)
+    if key == "moss_reference":
+        result["workflow"] = (
+            "Bind one anime character image. Write comma-separated English scene, pose and framing tags in prompt "
+            "and keep the user's original request in instruction. The image supplies appearance. "
+            "Do not add image-number markers or layout JSON. Validate and preview before submission."
+        )
+    if spec.get("prompt_reference_format") == "none":
+        result.update(format="none", prompt_language="none", requires_final_prompt=False,
+                      skills=[], skill_ids=[], tools=[],
+                      workflow="Use the selected theme, media input, and exposed controls. No model prompt is used; "
+                               "keep the user's original request in instruction.")
     if spec.get("prompt_policy", {}).get("mode") == "preset_fixed":
         result.update({"automatic_routing": False, "format": "preset_fixed", "requires_final_prompt": False,
                        "prompt_policy": spec["prompt_policy"], "skills": [], "skill_ids": [],
@@ -179,6 +191,8 @@ def guidance(entry, spec, lang, context=None):
 
 
 def validate(prompt, guide, instruction=""):
+    if guide.get("format") == "none":
+        return {"state": "pass", "checks": [], "guidance_url": guide["guidance_url"]}
     from modules.canvas_danbooru_preflight import prompt_preflight_check
     from modules.lora_stack import TAG_PATTERN
     encoder_prompt = TAG_PATTERN.sub("", prompt)

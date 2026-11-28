@@ -1,0 +1,41 @@
+ComfyUI-KandinskySR
+Copyright (C) 2026 PedroMarinhoDev
+Licensed under the GNU General Public License v3.0 (see LICENSE), like ComfyUI, whose code it imports, except for
+the parts listed below, which keep their own licences.
+
+1. Kandinsky 6.0 Video Super-Resolution (kandinskylab)
+   https://github.com/kandinskylab/kandinsky-video-sr
+   MIT License (see LICENSE-MIT). Copyright (c) 2026 kandinskylab.
+
+   The video side is reimplemented on ComfyUI's operations after the release's code, keeping the released parameter
+   names so the converted weights load as they are:
+   - kandinsky_sr/video/model.py: the SR transformer (core/components/model/dit.py, nn.py)
+   - kandinsky_sr/video/nabla.py: the NABLA sparse attention masks (core/components/model/utils.py, nn.py)
+   - kandinsky_sr/video/sampler.py: the degraded start latent and the pi-Flow sampler (core/algo/)
+   - kandinsky_sr/video/pipeline.py: frame handling, tiling, stitching (pipeline/)
+   - kandinsky_sr/video/kvae.py: the KVAE 3D 2.0 video VAE (core/components/video_kvae/)
+   - kandinsky_sr/video/latent_upscaler.py: the latent upscalers (core/components/latent_upscaler/)
+   - tools/convert_vsr_dit.py, tools/convert_kvae.py, tools/convert_latent_upscaler.py read the release's Diffusers
+     bundle layout and configs.
+
+2. Kandinsky ImageSR (kandinskylab)
+   https://github.com/kandinskylab/kandinsky-image-sr
+   MIT License (see LICENSE-MIT). Copyright (c) 2026 kandinskylab.
+
+   - kandinsky_sr/image/model.py: the baked ImageSR transformer
+   - kandinsky_sr/image/upscale.py: the tiled one-step pipeline
+   - tools/convert_image_sr.py reads the release's Diffusers transformer.
+
+3. ComfyUI-ReCaVSR (PedroMarinhoDev), GPL-3.0
+   https://github.com/PedroMarinhoDev/ComfyUI-ReCaVSR
+   - kandinsky_sr/video/video_io.py is adapted from recavsr/video_io.py (streamed video input and output).
+
+The model weights are not part of this repository:
+
+- Kandinsky 6.0 VSR 2.0, MIT: https://huggingface.co/kandinskylab/Kandinsky-6.0-VSR-2.0-distilled2steps-Diffusers
+- Kandinsky ImageSR 2.0, MIT: https://huggingface.co/kandinskylab/Kandinsky-ImageSR-2.0
+- the same as single ComfyUI files (bf16 and int8 ConvRot transformers, the KVAE, the latent upscalers):
+  https://huggingface.co/PedroMarinhoDev/Kandinsky-SR-ComfyUI
+- the FLUX.1 VAE the image nodes use, Apache-2.0: https://huggingface.co/black-forest-labs/FLUX.1-schnell
+
+This project is not affiliated with kandinskylab.

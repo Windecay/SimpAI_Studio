@@ -103,7 +103,6 @@ def normalize_llama_cpp_n_ctx(value, default=8192, maximum=None):
     except (TypeError, ValueError):
         upper = LLAMA_CPP_N_CTX_MAX
     upper = max(LLAMA_CPP_N_CTX_MIN, min(upper, LLAMA_CPP_N_CTX_MAX))
-    upper = max(upper, fallback)
     try:
         requested = int(value)
     except (TypeError, ValueError):

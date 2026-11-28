@@ -1454,7 +1454,7 @@ def trigger_input_identity(img):
     util.log_ui_trace(logger, "[UI-TRACE] identity.qr_upload.enter | img_is_none=%s, shape=%s", img is None, getattr(img, "shape", None))
     if img is None:
         util.log_ui_trace(logger, "[UI-TRACE] identity.qr_upload.empty | reset_to_manual_input")
-        return [get_identity_dialog_note(None, args_manager.args.language)] + [gr_update(visible=True)] + [gr_update(visible=False)] + [gr_update(visible=False)]*7 + ["", "", ""]
+        return [get_identity_dialog_note(None, args_manager.args.language), gr_update(visible=True)] + [gr_update(visible=False)] * 8 + [""]
     image = util.HWC3(img)
     qr_code_detector = cv2.QRCodeDetector()
     user_did, nickname, telephone = '', '', ''
@@ -1684,7 +1684,14 @@ def toggle_identity_dialog(state):
         state['identity_dialog'],
         is_guest,
     )
-    result = [get_identity_dialog_note(state["user"].get_did(), state.get("__lang"))] + [gr_update(visible=is_guest)] + [gr_update(visible=False)]*3 + [gr_update(visible=not is_guest)] + [gr_update(visible=False)]*3 + [gr_update(visible=not is_guest)] + ['', '86-CN-中国', '', None]
+    result = (
+        [get_identity_dialog_note(state["user"].get_did(), state.get("__lang")), gr_update(visible=is_guest)]
+        + [gr_update(visible=False)] * 3
+        + [gr_update(visible=not is_guest, value="")]
+        + [gr_update(visible=False)] * 3
+        + [gr_update(visible=not is_guest)]
+        + ['', '86-CN-中国', '', None]
+    )
     upstream_status = gr_update(visible=not is_export_qr(state["user"].get_did()), value=upstream_status_text)
     export_qr = gr_update(visible=is_export_qr(state["user"].get_did()))
     result = [gr_update(visible=not flag), build_current_id_info(state["user"].get_nickname(), state["user"].get_did(), state["sys_did"], state["__theme"], state.get("__lang")), upstream_status, export_qr] + result

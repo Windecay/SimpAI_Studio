@@ -62,6 +62,8 @@ def resolve_engine_class_display(template_engine, task_method):
             'anima_aio': 'Anima',
             'anima_rgba': 'Anima',
             'moss_image_sft_aio_cn': 'MOSS-Image',
+            'moss_reference': 'MOSS-Reference',
+            'scene_moss_reference': 'MOSS-Reference',
             'krea2_aio_cn': 'Krea2',
             'krea2_edit_cn': 'Krea2',
             'krea2_a2r_cn': 'Krea2',

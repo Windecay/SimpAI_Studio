@@ -1,0 +1,110 @@
+{
+  "preset_category": "MOSS",
+  "supported_tasks": ["image_edit"],
+  "prompt_agent_required": true,
+  "default_engine": {
+    "backend_engine": "Comfy",
+    "engine_type": "image",
+    "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "disinteractive": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
+    "available_aspect_ratios_selection": "Custom",
+    "scene_frontend": {
+      "version": "m1.2",
+      "theme": ["MOSS Character Reference"],
+      "theme_title": "MOSS Character Reference",
+      "theme_labels": {"MOSS Character Reference": "Character Reference"},
+      "task_method": {"MOSS Character Reference": "moss_reference"},
+      "image_slot_labels": {"scene_canvas_image": "Character Reference Image"},
+      "prompt_skill_docs": {
+        "default": {
+          "cn": ["moss_reference_prompting_cn.md"],
+          "en": ["moss_reference_prompting_en.md"]
+        }
+      },
+      "director_capability": {
+        "image_policy": "required",
+        "min_images": 1,
+        "max_images": 1,
+        "image_modes": ["reference_set"],
+        "video_policy": "forbidden",
+        "audio_policy": "forbidden",
+        "audio_output": "none",
+        "mixed_segments": false,
+        "automatic_routing": false
+      },
+      "disable_canvas_mask": true,
+      "disvisible": [
+        "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4",
+        "scene_input_image5", "scene_input_image6", "scene_input_image7", "scene_input_image8",
+        "scene_additional_prompt", "scene_additional_prompt_2", "scene_refiner_model",
+        "scene_video", "scene_reference_video", "scene_reference_video2",
+        "scene_audio", "scene_audio2", "scene_audio3", "scene_video_duration",
+        "scene_var_number", "scene_var_number2", "scene_var_number4", "scene_var_number5",
+        "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10",
+        "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4",
+        "pose_studio", "gaussian_studio", "camera_control_accordion", "anglelight_control_accordion",
+        "style_transfer_accordion", "sam3_video_mask_accordion", "sam3_input_video", "sam3_mask_video",
+        "minimax_h3_storyboard_control"
+      ],
+      "prompt": {"MOSS Character Reference": ""},
+      "agent_prompt": {
+        "MOSS Character Reference": "Write only a short comma-separated list of English scene tags for one anime character. Start with the appropriate character-count tag and solo; describe the requested setting, action, pose, expression, framing and lighting. The single reference supplies appearance and outfit. Do not repeat those details unless the user requests a change. Do not add image-number tokens, JSON, generic quality or artist tags, or an adapter trigger."
+      },
+      "image_preprocessor_method": [["-normalization"]],
+      "overwrite_step": {"MOSS Character Reference": 50},
+      "overwrite_step_min": 1,
+      "overwrite_step_max": 100,
+      "sampler": {"MOSS Character Reference": "euler"},
+      "scheduler": {"MOSS Character Reference": "sgm_uniform"},
+      "var_number3_title": "Character Reference Guidance",
+      "var_number3_min": 1.0,
+      "var_number3_max": 2.5,
+      "var_number3_step": 0.05,
+      "var_number3": {"MOSS Character Reference": 2.5},
+      "aspect_ratio": ["672*896", "768*768", "896*672"],
+      "resolution_control": {
+        "mode": "standard",
+        "source": "none",
+        "base_width": 672,
+        "base_height": 896,
+        "quantize": 16,
+        "interactive": true,
+        "frontend_preprocess": false,
+        "preprocess_target": "none",
+        "preprocess_fit": "scale"
+      }
+    }
+  },
+  "default_model": "moss_image_sft_int8_convrot.safetensors",
+  "default_clip_model": "qwen3.5_9b_w4a8_gptq.safetensors",
+  "default_vae": "flux2-vae.safetensors",
+  "default_refiner": "None",
+  "default_refiner_switch": 0.5,
+  "default_upscale_model": "default",
+  "default_loras": [
+    ["moss_image_edit_charref_v2.safetensors", 1.0],
+    ["None", 1.0], ["None", 1.0], ["None", 1.0], ["None", 1.0]
+  ],
+  "default_cfg_scale": 3.0,
+  "default_sample_sharpness": 0,
+  "default_sampler": "euler",
+  "default_scheduler": "sgm_uniform",
+  "default_performance": "Speed",
+  "default_styles": [],
+  "default_aspect_ratio": "672*896",
+  "default_resolution_quantize_step": 16,
+  "default_image_number": 1,
+  "default_overwrite_step": 50,
+  "default_prompt": "",
+  "default_prompt_negative": "",
+  "checkpoint_downloads": {},
+  "embeddings_downloads": {},
+  "lora_downloads": {},
+  "vae_downloads": {},
+  "model_list": [
+    "diffusion_models,moss_image_sft_int8_convrot.safetensors,5413698958,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/diffusion_models/moss_image_sft_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors",
+    "text_encoders,qwen3.5_9b_w4a8_gptq.safetensors,7343591088,0,https://modelscope.cn/models/Comfy-Org/MOSS-Image/resolve/master/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors,https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors",
+    "vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/vae/flux2-vae.safetensors",
+    "loras,moss_image_edit_charref_v2.safetensors,297333720,4e0b874ccc4e5f177fee38fbcc975493f13a962b9c8a791f16448115fd5f9369,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/moss_image_edit_charref_v2.safetensors,https://huggingface.co/mossloras/moss-image-lora-archive/resolve/a034ac978c3c989be6b55d89f3f19f0f13f85a4d/2026-11-17/MOSS-Image/3011337_MOSS-Image-Edit-CharRef--beta/3476383/moss_image_edit_charref_v2.safetensors"
+  ]
+}

@@ -84,7 +84,10 @@ def load_scene_batch_media(path, kind):
     import av
 
     # Inspect one decoded frame, without loading the full clip into memory.
-    with av.open(path, timeout=5.0) as container:
+    # This probe does not use metadata; tolerate malformed tags on PyAV versions
+    # that still expose a metadata error policy.
+    metadata_options = {"metadata_errors": "replace"} if hasattr(av.container.Container, "metadata_errors") else {}
+    with av.open(path, timeout=5.0, **metadata_options) as container:
         streams = getattr(container.streams, kind)
         if not streams:
             raise ValueError(f"No {kind} stream")

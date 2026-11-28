@@ -535,6 +535,27 @@ SimpAI UI guide skill:
   `VOSR2 Video Upscale`, Chinese display name
   `VOSR2 视频放大`; the catalog key remains `VOSR2-Video`.
 
+## Kandinsky Image Upscale
+
+- Use `Kandinsky-ImageSR` when the user explicitly selects it. Provide one
+  source image, with no prompt or mask. The 2x and 4x themes share the same
+  INT8 model and FLUX.1 VAE.
+- Detail strength ranges from 0 to 8 (default 4). Lower values stay closer to
+  the source; higher values reconstruct more texture. Review small text, line
+  art, and faces. Use the theme and parameter schema returned by Studio.
+
+## Kandinsky Video Upscale
+
+- `Kandinsky-VideoSR` is an explicitly selected, experimental 2x preset. It
+  takes one video with no prompt or separate audio and requires only the
+  2x latent upscaler, the video transformer, and the KVAE.
+- The MP4 retains the frame count and nominal frame rate of the selected
+  segment. Variable-frame-rate input is exported at a constant frame rate.
+  Source audio tracks are encoded as AAC.
+- The default temporal window is 121 frames. Set a shorter window to reduce
+  memory pressure and review motion at joins. A duration limit of 0 processes
+  the entire video. Test a short segment before processing a long clip.
+
 ## Infinite Canvas / Advanced Workflow
 
 - Recommend the main WebUI directly for a single simple generation, a one-off
@@ -623,6 +644,29 @@ SimpAI UI guide skill:
 - If critical information is missing, ask one concise clarifying question before
   recommending.
 - Keep answers practical and concise in the user's UI language.
+
+## MOSS-Reference
+
+- Choose `MOSS-Reference` explicitly when generating a new scene for the same
+  anime character. Bind exactly one reference in the main image slot. Use a
+  single-character image on a plain white background in a neutral pose. There
+  is no separate style-reference, multi-image or mask-editing mode.
+- Write comma-separated English tags for character count, scene, pose,
+  expression, framing and lighting. Keep appearance in the reference unless
+  a change was requested. Do not add image-number markers or Layout JSON.
+- Based on [bag3labo charref v2](https://github.com/bag3labo/moss-image-edit-charref-v2/tree/1ab660fd372a9317370240c146e90bf2780a3c17).
+  Studio reuses the INT8 SFT model, W4A8 encoder, and Flux2 VAE from
+  `MOSS-Image`. The shared model package 48 adds only the character-reference
+  LoRA. The author's published benchmark used BF16 weights.
+  Defaults: 672 × 896 output, 50 steps, CFG 3 and Euler with `sgm_uniform`.
+  The reference is fitted to a 448 × 448 white square.
+- Reference guidance 2.5 favors likeness; 1.0 favors following the written
+  pose and scene. Small accessories, eye color and skin tone can drift.
+  Leave the negative prompt empty initially and change the seed when needed.
+- LoRA 1 defaults to the character-reference LoRA at weight 1.0. Its weight
+  and enabled state are independent of reference guidance. Use slot 2 or
+  later for a compatible MOSS-Image style LoRA. Style transfer from a second
+  image and compatibility with arbitrary LoRAs are not supported.
 
 ## MOSS-Image
 

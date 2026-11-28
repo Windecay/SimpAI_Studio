@@ -65,6 +65,7 @@
     const VLM_N_CTX_MIN = 512;
     const VLM_N_CTX_MAX = 262144;
     const VLM_N_CTX_STEP = 512;
+    const VLM_LOCAL_CONTEXT_DEFAULT = 8192;
     const VLM_API_CONTEXT_DEFAULT = 32768;
     const VLM_SKILLS_ENDPOINT = '/describe-image/vlm-skills';
     const VLM_SKILL_LIMITS_BY_MODE = Object.freeze({
@@ -181,7 +182,7 @@
         'image_object_transfer', 'image_expression_transfer'
     ]);
     const CREATIVE_VIDEO_TASKS = new Set([
-        'text_to_video', 'image_to_video', 'multi_image_to_video',
+        'text_to_video', 'image_to_video', 'multi_image_to_video', 'video_upscale',
         'audio_to_video', 'image_audio_to_video', 'video_audio_to_video'
     ]);
     const CREATIVE_MANUAL_OUTPUT_TASKS = new Set([
@@ -195,7 +196,7 @@
         ...[...CREATIVE_IMAGE_TASKS].filter((task) => task !== 'text_to_image'),
         'image_to_video', 'multi_image_to_video', 'image_audio_to_video'
     ]);
-    const CREATIVE_VIDEO_INPUT_TASKS = new Set(['video_audio_to_video']);
+    const CREATIVE_VIDEO_INPUT_TASKS = new Set(['video_audio_to_video', 'video_upscale']);
     const CREATIVE_AUDIO_INPUT_TASKS = new Set(['audio_to_video', 'image_audio_to_video', 'video_audio_to_video']);
     const CREATIVE_MULTI_IMAGE_TASKS = new Set([
         'multi_image_edit', 'image_style_transfer', 'image_face_swap', 'image_pose_transfer',
@@ -5678,33 +5679,44 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
 
     function knownVlmContextWindowForVersion(version) {
         const cleanVersion = resolveVlmVersion(version);
-        const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
+        const item = vlmModelCatalogItemForVersion(cleanVersion);
         const catalogValue = state.vlmContextWindows?.[cleanVersion];
-        const registryValue = registry.VLM_CONTEXT_WINDOWS?.[cleanVersion];
-        const parsed = Number(catalogValue || registryValue || 0);
+        const parsed = Number(catalogValue || item?.context_window || item?.runtime_config?.context_window || 0);
         return Number.isFinite(parsed) && parsed > 0
             ? Math.max(VLM_N_CTX_MIN, Math.min(Math.round(parsed), VLM_N_CTX_MAX))
             : 0;
     }
 
     function vlmContextWindowForVersion(version) {
-        if (vlmBackendForVersion(version) === 'custom_api') {
+        const backend = vlmBackendForVersion(version);
+        const maximum = knownVlmContextWindowForVersion(version);
+        if (backend === 'custom_api') {
             const api = readDescribeCustomApi(version);
             return normalizeVlmNctx(state.apiContextWindow)
                 || normalizeVlmNctx(api?.context_window || api?.contextWindow)
-                || knownVlmContextWindowForVersion(version)
+                || maximum
                 || VLM_API_CONTEXT_DEFAULT;
         }
-        return knownVlmContextWindowForVersion(version) || Math.max(8192, normalizeVlmNctx(state.nCtx));
+        if (backend !== 'llamacpp') {
+            return maximum || Math.max(VLM_LOCAL_CONTEXT_DEFAULT, normalizeVlmNctx(state.nCtx));
+        }
+        const defaultContext = Number(vlmModelCatalogItemForVersion(version)?.runtime_config?.n_ctx)
+            || VLM_LOCAL_CONTEXT_DEFAULT;
+        return currentVlmNctx(version) || Math.min(defaultContext, maximum || VLM_N_CTX_MAX);
     }
 
-    function vlmBackendForVersion(version) {
+    function vlmModelCatalogItemForVersion(version) {
         const cleanVersion = resolveVlmVersion(version);
         const registry = window.SimpAICanvasWorkbenchRegistry || window.SimpAICanvasWorkbenchVlm || {};
         const catalog = Array.isArray(state.vlmModelCatalog) && state.vlmModelCatalog.length
             ? state.vlmModelCatalog
             : (Array.isArray(registry.VLM_MODEL_CATALOG) ? registry.VLM_MODEL_CATALOG : []);
-        const item = catalog.find((entry) => String(entry?.id || '').trim() === cleanVersion);
+        return catalog.find((entry) => String(entry?.id || '').trim() === cleanVersion);
+    }
+
+    function vlmBackendForVersion(version) {
+        const cleanVersion = resolveVlmVersion(version);
+        const item = vlmModelCatalogItemForVersion(cleanVersion);
         return String(item?.backend || (cleanVersion === 'Custom' || cleanVersion.startsWith('custom_api:') ? 'custom_api' : 'llamacpp')).trim();
     }
 
@@ -16675,6 +16687,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         }
         state.vlmModelCatalogLoaded = true;
         if (dynamicCatalog) state.vlmModelCatalogDynamicLoaded = true;
+        syncVlmContextInput(document.querySelector('#describe_vlm_chat_modal [data-describe-vlm-chat-n-ctx]'));
         return true;
     }
 
@@ -25875,6 +25888,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const stableRequest = String(action?.requested_task || action?.task_request?.task || '').trim();
         const requested = String(stableRequest || action?.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
         const normalized = CREATIVE_TASK_ALIASES[requested] || requested;
+        if (normalized === 'video_upscale') return normalized;
         const generalTask = counts.image > 1 ? 'multi_image_edit' : 'image_edit';
         const instruction = String(action?.prompt || action?.task_request?.instruction || '');
         if (['image_background_removal', 'image_object_removal'].includes(normalized)
@@ -25912,7 +25926,8 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const refs = action.task_request?.media_refs || action.media_refs || [];
         if (Array.isArray(refs) && refs.some(ref => !inputs.some(input => input.ref === ref))) return false;
         const current = creativePresetEntry(action.preset);
-        const keepCurrent = current && (String(current.name || '').toLowerCase() !== 'onekeykontext'
+        const keepCurrent = current && ((current.media_capability?.automatic_routing !== false
+            && String(current.name || '').toLowerCase() !== 'onekeykontext')
             || ['user', 'session_preference'].includes(action.preset_source));
         const entry = keepCurrent && creativePresetHasTaskRoute(current, task, inputs) ? current
             : creativeCompatiblePresetEntry(task, inputs, action.prompt);
@@ -25937,6 +25952,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         if (CREATIVE_IMAGE_TASKS.has(task) || ['image_to_video', 'multi_image_to_video'].includes(task)) return new Set(['image']);
         if (task === 'audio_to_video') return new Set(['audio']);
         if (task === 'image_audio_to_video') return new Set(['image', 'audio']);
+        if (task === 'video_upscale') return new Set(['video']);
         if (task === 'video_audio_to_video') return new Set(['image', 'video', 'audio']);
         return new Set(['image', 'video', 'audio']);
     }
@@ -26396,6 +26412,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const candidates = state.creativePresetCatalog.filter((entry) =>
             creativePresetSupportsTask(entry, task, media)
             && String(entry.name || '').toLowerCase() !== 'onekeykontext'
+            && entry.media_capability?.automatic_routing !== false
             && (task !== 'image_object_transfer' || String(entry.name || '').toLowerCase() !== 'qwenoutfitswap' || outfitTransfer)
         );
         const taskPriorities = {
@@ -26479,6 +26496,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
                 max_audios: creativePresetMaxMedia(entry, 'audio'),
                 output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image',
                 supported_tasks: creativePresetSupportedTasks(entry),
+                ...(entry?.media_capability?.automatic_routing === false ? { automatic_routing: false } : {}),
                 interaction_requirements: Array.isArray(entry?.media_capability?.interaction_requirements)
                     ? entry.media_capability.interaction_requirements.slice(0, 8)
                     : [],
@@ -27312,6 +27330,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
             image_edit: ['Image edit', '图片编辑'],
             multi_image_edit: ['Multi-image edit', '多图编辑'],
             image_upscale: ['Image upscale', '图像放大'],
+            video_upscale: ['Video upscale', '视频放大'],
             image_restore: ['Image restoration', '图像修复'],
             image_detail_enhance: ['Detail enhancement', '细节增强'],
             image_background_removal: ['Remove background', '去背景'],
@@ -30995,10 +31014,6 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         }
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
-        const requestedContextWindow = Math.max(
-            1,
-            Number(currentVlmNctx(version) || vlmContextWindowForVersion(version)) || 8192
-        );
         const supportsImageInput = !customApi || customApi.supports_images !== false;
         const canSendImages = isDirectRun || supportsImageInput;
         const requestedPreviousImage = !pendingImages.length && runtime.autoAttachPreviousImage && Boolean(latestConversationImageCandidate(messages));
@@ -31015,6 +31030,7 @@ ${receipts.length ? `<details data-memory-repair-results open><summary>${t('Save
         const modelReady = isDirectRun ? true : await ensureSelectedVlmModelReady(version);
         if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;
         if (!modelReady) return;
+        const requestedContextWindow = currentVlmNctx(version) || vlmContextWindowForVersion(version);
         if (selectedMode === 'creative') {
             await ensureCreativePresetCatalog();
             if (requestToken !== runtime.requestToken || !queuedMessageStillPending()) return;

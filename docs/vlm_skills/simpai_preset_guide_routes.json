@@ -17,6 +17,13 @@
       "sections": ["Idol Image to 3D"]
     },
     {
+      "key": "kandinsky_sr",
+      "title": {"en": "Kandinsky Upscale", "cn": "Kandinsky 放大"},
+      "priority": 965,
+      "keywords": ["kandinsky", "kandinsky-imagesr", "kandinsky-videosr", "kandinsky image upscale", "kandinsky video upscale", "kandinsky 图像放大", "kandinsky 视频放大"],
+      "sections": ["Kandinsky Image Upscale", "Kandinsky Video Upscale"]
+    },
+    {
       "key": "vosr2_video",
       "title": {"en": "VOSR2 Video Upscale", "cn": "VOSR2 视频放大"},
       "priority": 960,
@@ -166,6 +173,13 @@
       "priority": 560,
       "keywords": ["another one", "follow-up", "继续编辑", "再来一个", "沿用", "preset family", "预设系列"],
       "sections": ["Preset Routing And Follow-up Edits"]
+    },
+    {
+      "key": "moss_reference",
+      "title": {"en": "MOSS Character Reference", "cn": "MOSS 角色参考"},
+      "priority": 720,
+      "keywords": ["moss-reference", "moss reference", "moss_reference", "moss角色参考", "moss 角色参考", "moss参考生图", "moss_charref", "charref-v2"],
+      "sections": ["MOSS-Reference"]
     },
     {
       "key": "moss_image",

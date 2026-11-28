@@ -1,0 +1,45 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 512, "height": 512, "cfg": 1, "steps": 1,
+      "var_number": 4, "var_number2": 0, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "Kandinsky Image Source"},
+    "inputs": {"image": "None"}
+  },
+  "3": {
+    "class_type": "KandinskyImageSRLoader",
+    "_meta": {"title": "Kandinsky Image SR Model"},
+    "inputs": {"model": "kandinsky-sr/kandinsky_image_sr_2.0_int8_convrot.safetensors"}
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "_meta": {"title": "Kandinsky Image SR VAE"},
+    "inputs": {"vae_name": "ae.safetensors"}
+  },
+  "5": {
+    "class_type": "KandinskyImageSRUpscale",
+    "_meta": {"title": "Kandinsky Image Upscale 4x"},
+    "inputs": {
+      "model": ["3", 0], "vae": ["4", 0], "image": ["2", 0],
+      "scale": "4x", "creativity": ["1", 10], "tile_batch_size": 1, "kernels": "exact"
+    }
+  },
+  "6": {
+    "class_type": "SimpAIKandinskySaveImage",
+    "_meta": {"title": "Kandinsky Image Result"},
+    "inputs": {"images": ["5", 0]}
+  }
+}

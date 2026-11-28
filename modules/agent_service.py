@@ -586,9 +586,11 @@ class AgentService:
         capability = entry.get("media_capability") or {}
         output_type = capability.get("output_type") or entry.get("engine_type")
         mesh = output_type == "mesh"
+        fixed_prompt = entry["name"].casefold() == "onekeykontext"
+        prompt_mode = "none" if mesh or capability.get("prompt_mode") == "none" else "preset_fixed" if fixed_prompt else "instruction"
         return {"preset_id": entry["name"], "backend_engine": entry.get("backend_engine"),
-                "automatic_routing": not mesh and entry["name"].casefold() != "onekeykontext",
-                "prompt_mode": "none" if mesh else "preset_fixed" if entry["name"].casefold() == "onekeykontext" else "instruction",
+                "automatic_routing": not mesh and capability.get("automatic_routing") is not False and not fixed_prompt,
+                "prompt_mode": prompt_mode,
                 **({"generation_surface": "studio"} if mesh else {}),
                 "category": entry.get("preset_category"), "output_type": output_type,
                 "tasks": capability.get("supported_tasks") or [], "themes": (entry.get("schema") or {}).get("themes") or [],
@@ -628,6 +630,8 @@ class AgentService:
         translations = _translations(lang or context.state.get("__lang") or "en")
         parameters = []
         properties = {}
+        capability = entry.get("media_capability") or {}
+        promptless = capability.get("prompt_mode") == "none"
         for raw in info.get("params", schema.get("params") or []):
             key = raw.get("key")
             if not key or key in hidden or raw.get("visible") is False:
@@ -663,8 +667,11 @@ class AgentService:
             parameters.append(item)
             properties[key] = field
         generation_defaults = entry.get("generation_config") or {}
-        for key, label, kind in (("overwrite_step", "Steps", "number"), ("guidance_scale", "Guidance Scale", "number"),
-                                 ("sharpness", "Sharpness", "number"), ("sampler_name", "Sampler", "string"), ("scheduler_name", "Scheduler", "string")):
+        generation_params = (
+            ("overwrite_step", "Steps", "number"), ("guidance_scale", "Guidance Scale", "number"),
+            ("sharpness", "Sharpness", "number"), ("sampler_name", "Sampler", "string"), ("scheduler_name", "Scheduler", "string"),
+        )
+        for key, label, kind in (() if promptless else generation_params):
             value = defaults.get(key, generation_defaults.get(key))
             if value is None or value == "":
                 continue
@@ -688,13 +695,12 @@ class AgentService:
             parameters.append({"id": key, "label": field["title"], "type": kind, "default": value,
                                "group": "generation", "interactive": not field.get("readOnly", False)})
         method = info.get("task_method") or entry.get("task_method") or ""
-        capability = entry.get("media_capability") or {}
         from modules import describe_vlm_chat as chat
         qwen21 = chat._task_method_key(method) in chat._QWEN21_EDIT_METHODS
         spec = {**self._summary(entry), "theme": theme, "task_method": method,
-                "inputs": {key: copy.deepcopy(value) for key, value in capability.items() if key not in {"supported_tasks", "output_type"}},
+                "inputs": {key: copy.deepcopy(value) for key, value in capability.items() if key not in {"supported_tasks", "output_type", "prompt_mode"}},
                 "mask": "required" if "mask" in capability.get("interaction_requirements", []) else "unavailable" if schema.get("disable_canvas_mask", True) else "optional",
-                "prompt_reference_format": "<imageN>" if qwen21 else "<Picture N>" if "minimax_h3" in method or "p_h3_image" in method else "natural_language",
+                "prompt_reference_format": "none" if promptless else "<imageN>" if qwen21 else "<Picture N>" if "minimax_h3" in method or "p_h3_image" in method else "natural_language",
                 "parameters": parameters,
                 "parameter_schema": {"type": "object", "properties": properties, "additionalProperties": False},
                 "generation_defaults": {
@@ -1364,9 +1370,13 @@ class AgentService:
             from modules.agent_api_contract import ParameterProfileQuery
             plan["status"] = "needs_parameter_profile"
             plan["parameter_profile_options"] = self.parameter_profiles(ParameterProfileQuery(preset_id=entry["name"]), context)
-        node["params"]["prompt"] = chat._normalize_creative_qwen21_image_references(node["params"]["prompt"], plan, manifest)
-        if request.prompt and pe_supported_task(spec["task_method"]):
-            node["params"]["pe_applied_prompt"] = node["params"]["prompt"]
+        if (entry.get("media_capability") or {}).get("prompt_mode") == "none":
+            node["params"].update(prompt="", negative_prompt="")
+            node["params"].pop("pe_applied_prompt", None)
+        else:
+            node["params"]["prompt"] = chat._normalize_creative_qwen21_image_references(node["params"]["prompt"], plan, manifest)
+            if request.prompt and pe_supported_task(spec["task_method"]):
+                node["params"]["pe_applied_prompt"] = node["params"]["prompt"]
         from modules.agent_prompting import validate
         final_prompt = node["params"].get("prompt") or ""
         check_encoding(final_prompt, "prompt")

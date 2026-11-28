@@ -520,6 +520,7 @@
         };
         const getNumberConfig = (name, fallback) => Number(configCall(name, fallback)) || fallback;
         const VLM_CONTEXT_WINDOWS = getObjectConfig('getVlmContextWindows', {});
+        const VLM_MODEL_CATALOG = getArrayConfig('getVlmModelCatalog', []);
         const VLM_DEFAULT_VERSION = String(configCall('getVlmDefaultVersion', Object.keys(VLM_CONTEXT_WINDOWS)[0] || '') || Object.keys(VLM_CONTEXT_WINDOWS)[0] || '');
         const VLM_CHAT_DEFAULT_FONT_SIZE = getNumberConfig('getVlmChatDefaultFontSize', 14);
         const VLM_CHAT_DEFAULT_MAX_HISTORY = getNumberConfig('getVlmChatDefaultMaxHistory', 12);
@@ -3719,7 +3720,10 @@
         }
 
         function vlmChatContextWindowForVersion(version) {
-            return Number(VLM_CONTEXT_WINDOWS[String(version || '')] || 8192) || 8192;
+            const id = String(version || '');
+            const item = VLM_MODEL_CATALOG.find(entry => entry?.id === id);
+            const defaultContext = item?.backend === 'llamacpp' ? item.runtime_config?.n_ctx : 0;
+            return Number(defaultContext || VLM_CONTEXT_WINDOWS[id] || 8192) || 8192;
         }
 
         function vlmChatContextBudgetMax(params) {

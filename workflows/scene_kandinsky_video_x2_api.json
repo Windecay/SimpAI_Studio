@@ -1,0 +1,52 @@
+{
+  "1": {
+    "class_type": "SceneInput",
+    "_meta": {"title": "SceneInput"},
+    "inputs": {
+      "prompt": "", "additional_prompt": "",
+      "ip_image": "None", "ip_image1": "None", "ip_image2": "None", "ip_image3": "None",
+      "inpaint_image": "None", "inpaint_mask": "None",
+      "width": 512, "height": 512, "cfg": 1, "steps": 1,
+      "var_number": 121, "var_number2": 0, "var_number3": 0, "var_number4": 0,
+      "var_number5": 0, "var_number6": 0, "var_number7": 0, "var_number8": 0,
+      "var_number9": 0, "var_number10": 0,
+      "switch_option1": false, "switch_option2": false, "switch_option3": false, "switch_option4": false,
+      "model_type": 1, "model_type2": 1
+    }
+  },
+  "2": {
+    "class_type": "LoadVideo",
+    "_meta": {"title": "Kandinsky Video Source"},
+    "inputs": {"file": "None"}
+  },
+  "3": {
+    "class_type": "KandinskyVideoSRLoader",
+    "_meta": {"title": "Kandinsky Video SR Models"},
+    "inputs": {
+      "dit": "kandinsky-sr/kandinsky6_vsr_2.0_distilled2steps_int8_convrot.safetensors",
+      "kvae": "kandinsky-sr/kandinsky_kvae_3d_2.0_t4s16_bf16.safetensors",
+      "upscaler_x2": "kandinsky-sr/kandinsky6_sr_latent_upscaler_x2_bf16.safetensors",
+      "second_gpu": "none"
+    }
+  },
+  "4": {
+    "class_type": "SeedInput",
+    "_meta": {"title": "SeedInput"},
+    "inputs": {"seed": 42}
+  },
+  "5": {
+    "class_type": "KandinskyVideoSRUpscale",
+    "_meta": {"title": "Kandinsky Video Upscale 2x"},
+    "inputs": {
+      "models": ["3", 0], "video": ["2", 0], "scale": "2x", "seed": ["4", 0],
+      "overlap": 0.2, "window_frames": ["1", 10], "duration_limit": ["1", 17],
+      "preserve_frame_rate": true, "include_audio": false,
+      "stitch": "pixels", "kernels": "exact", "encoder": "h264 nvenc"
+    }
+  },
+  "6": {
+    "class_type": "SimpAIKandinskySaveVideo",
+    "_meta": {"title": "Kandinsky Video Result"},
+    "inputs": {"video": ["5", 0], "source": ["2", 0], "filename_prefix": "Kandinsky"}
+  }
+}

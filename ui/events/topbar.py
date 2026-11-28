@@ -5,6 +5,7 @@ import time
 
 import gradio as gr
 from enhanced.logger import format_name
+from ui.layout.identity import identity_control_updates
 from ui.update_helpers import gr_update, skip_update
 
 logger = logging.getLogger(format_name(__name__))
@@ -102,7 +103,13 @@ def bind_topbar_store_events(
     identity_input,
     store_state_guard=None,
 ) -> None:
-    toggle_store = topbar_module.toggle_preset_store
+    identity_outputs = [current_id_info, current_upstream_status, identity_export_btn] + identity_ctrls + identity_input
+
+    def toggle_store_with_identity(state):
+        result = list(topbar_module.toggle_preset_store(state))
+        return result[:4] + identity_control_updates(identity_outputs, result[4:])
+
+    toggle_store = toggle_store_with_identity
     apply_store = topbar_module.apply_navbar_from_store_editor
     delete_store = topbar_module.delete_user_preset_from_store
     store_errors = {}
@@ -118,7 +125,7 @@ def bind_topbar_store_events(
             return list(fn(*args)) + [""]
 
         def toggle_store(state, page_lang, request: gr.Request):
-            return guarded_result(topbar_module.toggle_preset_store, state, request, page_lang, [state],
+            return guarded_result(toggle_store_with_identity, state, request, page_lang, [state],
                                   7 + len(identity_ctrls) + len(identity_input))
 
         def apply_store(payload, state, page_lang, request: gr.Request):
@@ -1318,8 +1325,6 @@ def bind_topbar_identity_events(
     identity_confirm_button,
     identity_unbind_button,
     identity_ctrls,
-    identity_flow_rows,
-    identity_stage_state,
     identity_input,
     current_id_info,
     current_upstream_status,
@@ -1381,45 +1386,17 @@ def bind_topbar_identity_events(
             return []
         return list(refresh_fn(state, opened, activation_confirmed))
 
-    def _identity_stage_from_base(base):
-        def is_visible(index):
-            return len(base) > index and isinstance(base[index], dict) and base[index].get("visible") is True
-        if is_visible(3) or is_visible(4):
-            return "vcode"
-        if is_visible(5):
-            if is_visible(8):
-                return "confirm"
-            if is_visible(9):
-                return "unbind"
-            if is_visible(7):
-                return "phrase_confirm"
-            if is_visible(6):
-                return "phrase_set"
-            return "phrase"
-        return "input" if is_visible(1) else "summary"
-
-    def _identity_flow_row_updates(result):
-        base = list(result)
-        stage = _identity_stage_from_base(base)
-        vcode_visible = any(isinstance(item, dict) and item.get("visible") is True for item in base[3:5])
-        phrase_visible = any(isinstance(item, dict) and item.get("visible") is True for item in base[5:10])
-        _log_ui_trace(
-            logger,
-            "[UI-TRACE] identity.flow_rows | stage=%s, vcode_visible=%s, phrase_visible=%s, base_len=%s",
-            stage,
-            vcode_visible,
-            phrase_visible,
-            len(base),
-        )
-        return [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + base[:10] + base[10:]
-
     def _identity_state_update(state):
         if isinstance(state, dict):
             return dict(state)
         return state
 
-    def _identity_flow_row_updates_with_state(result, state):
-        return _identity_flow_row_updates(result) + [_identity_state_update(state)]
+    summary_outputs = [current_id_info, current_upstream_status, identity_export_btn]
+    confirm_outputs = identity_ctrls + summary_outputs
+    unbind_outputs = identity_ctrls + identity_input + summary_outputs
+
+    def _identity_updates_with_state(result, outputs, state):
+        return identity_control_updates(outputs, result) + [_identity_state_update(state)]
 
     def _after_identity_event_chain(chain):
         chain = chain.then(
@@ -1502,24 +1479,21 @@ def bind_topbar_identity_events(
         head = base[:4]
         ctrls = base[4:14]
         identity_inputs = base[14:]
-        vcode_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[3:5])
-        phrase_visible = any(isinstance(item, dict) and item.get("visible") is True for item in ctrls[5:10])
         new_flag = bool(state.get("identity_dialog", False)) if isinstance(state, dict) else not old_flag
         activation_required = bool(new_flag and _activation_is_required(activation_confirmed))
-        if activation_required and len(ctrls) > 1:
-            ctrls[1] = gr_update(visible=False)
+        if activation_required:
+            ctrls[1:] = [{**update, "visible": False} for update in ctrls[1:]]
         _log_ui_trace(
             logger,
             "[UI-TRACE] identity.toggle_reset | old_flag=%s, new_flag=%s, clear_input_id_info=True, "
-            "vcode_visible=%s, phrase_visible=%s, activation_required=%s",
+            "activation_required=%s",
             old_flag,
             new_flag,
-            vcode_visible,
-            phrase_visible,
             activation_required,
         )
-        stage = "activation" if activation_required else (_identity_stage_from_base(ctrls) if new_flag else "closed")
-        result = head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
+        result = head[:1] + identity_control_updates(
+            summary_outputs + identity_ctrls, head[1:] + ctrls,
+        ) + identity_inputs + [""]
         return result + _activation_refresh_updates(state, new_flag, activation_confirmed) + [_identity_state_update(state)]
 
     def _open_identity_dialog_reset(state, activation_confirmed=False):
@@ -1544,45 +1518,47 @@ def bind_topbar_identity_events(
     )
 
     if activation_state is not None:
-        phrases_fn = lambda a, b, c, confirmed: _identity_flow_row_updates_with_state(
+        phrases_fn = lambda a, b, c, confirmed: _identity_updates_with_state(
             simpleai_module.set_phrases(a, b, c, "confirm", confirmed),
+            confirm_outputs,
             b,
         )
         phrases_inputs = identity_input_info + [identity_phrase_input, activation_state]
     else:
-        phrases_fn = lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.set_phrases(a, b, c, "confirm"), b)
+        phrases_fn = lambda a, b, c: _identity_updates_with_state(simpleai_module.set_phrases(a, b, c, "confirm"), confirm_outputs, b)
         phrases_inputs = identity_input_info + [identity_phrase_input]
     phrases_chain = identity_phrases_confirm_button.click(
         phrases_fn,
         inputs=phrases_inputs,
-        outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [current_id_info, current_upstream_status, identity_export_btn, state_topbar],
+        outputs=confirm_outputs + [state_topbar],
         show_progress=False,
         queue=False,
     )
     _after_identity_event_chain(phrases_chain)
 
     if activation_state is not None:
-        confirm_fn = lambda a, b, c, confirmed: _identity_flow_row_updates_with_state(
+        confirm_fn = lambda a, b, c, confirmed: _identity_updates_with_state(
             simpleai_module.confirm_identity(a, b, c, confirmed),
+            confirm_outputs,
             b,
         )
         confirm_inputs = identity_input_info + [identity_phrase_input, activation_state]
     else:
-        confirm_fn = lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.confirm_identity(a, b, c), b)
+        confirm_fn = lambda a, b, c: _identity_updates_with_state(simpleai_module.confirm_identity(a, b, c), confirm_outputs, b)
         confirm_inputs = identity_input_info + [identity_phrase_input]
     confirm_chain = identity_confirm_button.click(
         confirm_fn,
         inputs=confirm_inputs,
-        outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [current_id_info, current_upstream_status, identity_export_btn, state_topbar],
+        outputs=confirm_outputs + [state_topbar],
         show_progress=False,
         queue=False,
     )
     _after_identity_event_chain(confirm_chain)
 
     unbind_chain = identity_unbind_button.click(
-        lambda a, b, c: _identity_flow_row_updates_with_state(simpleai_module.unbind_identity(a, b, c), b),
+        lambda a, b, c: _identity_updates_with_state(simpleai_module.unbind_identity(a, b, c), unbind_outputs, b),
         inputs=identity_input_info + [identity_phrase_input],
-        outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + identity_input + [current_id_info, current_upstream_status, identity_export_btn, state_topbar],
+        outputs=unbind_outputs + [state_topbar],
         show_progress=False,
         queue=False,
     )
@@ -1593,8 +1569,7 @@ def bind_topbar_identity_events(
         current_id_info,
         current_upstream_status,
         identity_export_btn,
-        identity_stage_state,
-    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]] + activation_toggle_outputs + [state_topbar]
+    ] + identity_ctrls + identity_input + [identity_input_info[0]] + activation_toggle_outputs + [state_topbar]
     identity_toggle_inputs = [state_topbar]
     if activation_state is not None:
         identity_toggle_inputs.append(activation_state)
@@ -1617,7 +1592,6 @@ def bind_topbar_identity_events(
                 activation.get("note"),
                 identity_ctrls[1],
                 identity_ctrls[0],
-                identity_stage_state,
                 activation_state,
                 state_topbar,
             ],

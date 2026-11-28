@@ -74,6 +74,7 @@ from ui.events.topbar import (
     bind_topbar_navigation_events,
     bind_topbar_store_events,
 )
+from ui.layout.identity import IDENTITY_HIDDEN, identity_control_updates, identity_control_visibility
 from ui.layout.topbar import create_topbar_layout
 from ui.layout.resolution_control import create_main_resolution_control, create_scene_resolution_control
 
@@ -6302,14 +6303,13 @@ with shared.gradio_root:
                                     current_id_info = gr.Markdown(elem_classes='note_info')
                                 with gr.Column(scale=1, min_width=50, elem_classes=["identity-summary-side"]):
                                     current_upstream_status = gr.Markdown(elem_classes='note_info')
-                                    identity_export_btn = gr.Button(value='Export identity', size='sm', min_width=35, elem_classes='identity_export', visible=False)
+                                    identity_export_btn = gr.Button(value='Export identity', size='sm', min_width=35, elem_classes=['identity_export', IDENTITY_HIDDEN])
                             identity_note_info = gr.Markdown(elem_classes=['note_info', 'identity_flow_note'], value=simpleai.identity_note)
                             identity_activation_state = gr.State(False)
                             initial_activation_copy = simpleai.get_multi_user_activation_copy({"__lang": args_manager.args.language})
                             with gr.Column(
-                                visible=False,
                                 elem_id="identity_multi_user_activation_guard",
-                                elem_classes=["identity-activation-guard"],
+                                elem_classes=["identity-activation-guard", IDENTITY_HIDDEN],
                             ) as identity_activation_guard:
                                 identity_activation_note = gr.Markdown(
                                     value=initial_activation_copy["notice"],
@@ -6342,99 +6342,41 @@ with shared.gradio_root:
                                     elem_id="identity_activation_apply_button",
                                     variant="primary",
                                 )
-                            with gr.Row(visible=False, elem_id="identity_input_row", elem_classes=["identity-bind-grid"]) as input_identity:
+                            with gr.Row(elem_id="identity_input_row", elem_classes=["identity-bind-grid", IDENTITY_HIDDEN]) as input_identity:
                                 with gr.Column(scale=4, min_width=126, elem_classes=["identity-bind-card", "identity-bind-card-qr"]):
                                     input_qr_title = gr.Markdown(elem_classes='input_note_info', value='<b>Upload QrCode to bind</b>')
                                     identity_qr = gr.Image(label='Identity QrCode', sources=['upload'], type='numpy', height=126, width=126, elem_id="identity_qr", elem_classes='identity_qr', buttons=["download", "fullscreen"])
                                 with gr.Column(scale=4, min_width=150, elem_classes=["identity-bind-card", "identity-bind-card-manual"]):
                                     input_id_title = gr.Markdown(elem_classes='input_note_info', value='<b>Input identity to bind</b>')
                                     identity_nick_input = gr.Textbox(show_label=False, max_lines=1, container=False, placeholder="Type nickname here.", min_width=50, elem_classes='identity_input2')
-                                    with gr.Row(visible=False, elem_id="identity_legacy_contact_row"):
+                                    with gr.Row(elem_id="identity_legacy_contact_row", elem_classes=[IDENTITY_HIDDEN]):
                                         with gr.Column(scale=2, min_width=20):
                                             identity_areacode = gr.Dropdown(choices=modules.flags.areacode, value='86-CN-中国', container=False, min_width=20, elem_id='areacode',elem_classes='identity_input3')
                                         with gr.Column(scale=3, min_width=30):
                                             identity_tele_input = gr.Textbox(show_label=False, max_lines=1, container=False, placeholder="Type telephone here.", min_width=30, elem_classes='identity_input2')
                                     identity_bind_button = gr.Button(value='Bind identity', min_width=40, visible=True, elem_id="identity_bind_button")
-                            with gr.Row(visible=False, elem_id="identity_id_display_row", elem_classes=["identity-action-row"]) as input_id_display:
+                            with gr.Row(elem_id="identity_id_display_row", elem_classes=["identity-action-row", IDENTITY_HIDDEN]) as input_id_display:
                                 input_id_info = gr.Markdown(elem_id="identity_input_id_info", elem_classes='input_id_info', value='input identity', visible=True)
                                 identity_change_button = gr.Button(value='Change identity', min_width=40, visible=True, elem_id="identity_change_button")
-                            with gr.Row(visible=False, elem_id="identity_vcode_row", elem_classes=["identity-action-row"]) as identity_vcode_row:
-                                identity_vcode_input = gr.Textbox(show_label=False, max_lines=1, container=False, visible=True, placeholder="Type Verification here.", min_width=70, elem_id="identity_vcode_input", elem_classes='identity_input')
-                                identity_verify_button = gr.Button(value='Verify identity', elem_classes='identity_button', visible=True, elem_id="identity_verify_button")
-                            with gr.Row(visible=False, elem_id="identity_phrase_row", elem_classes=["identity-action-row"]) as identity_phrase_row:
-                                identity_phrase_input = gr.Textbox(show_label=False, type='password', visible=True, container=False, placeholder="Type ID phrases here.", min_width=150, elem_id="identity_phrase_input", elem_classes='identity_input')
-                                identity_phrases_set_button = gr.Button(value='Setting ID phrases', elem_classes='identity_button', visible=True, elem_id="identity_phrases_set_button")
-                                identity_phrases_confirm_button = gr.Button(value='Confirm ID phrases', elem_classes='identity_button', visible=True, elem_id="identity_phrases_confirm_button")
-                                identity_confirm_button = gr.Button(value='Confirm identity', elem_classes='identity_button', visible=True, elem_id="identity_confirm_button")
-                                identity_unbind_button = gr.Button(value='Unbind identity', min_width=35, elem_classes='identity_button', visible=True, elem_id="identity_unbind_button")
-                            identity_stage_state = gr.Textbox(value="input", visible="hidden", elem_id="identity_stage_state", elem_classes=["sai-gradio-hidden-bridge"])
+                            with gr.Row(elem_id="identity_vcode_row", elem_classes=["identity-action-row"]):
+                                identity_vcode_input = gr.Textbox(show_label=False, max_lines=1, container=False, placeholder="Type Verification here.", min_width=70, elem_id="identity_vcode_input", elem_classes=['identity_input', IDENTITY_HIDDEN])
+                                identity_verify_button = gr.Button(value='Verify identity', elem_classes=['identity_button', IDENTITY_HIDDEN], elem_id="identity_verify_button")
+                            with gr.Row(elem_id="identity_phrase_row", elem_classes=["identity-action-row"]):
+                                identity_phrase_input = gr.Textbox(show_label=False, type='password', container=False, placeholder="Type ID phrases here.", min_width=150, elem_id="identity_phrase_input", elem_classes=['identity_input', IDENTITY_HIDDEN])
+                                identity_phrases_set_button = gr.Button(value='Setting ID phrases', elem_classes=['identity_button', IDENTITY_HIDDEN], elem_id="identity_phrases_set_button")
+                                identity_phrases_confirm_button = gr.Button(value='Confirm ID phrases', elem_classes=['identity_button', IDENTITY_HIDDEN], elem_id="identity_phrases_confirm_button")
+                                identity_confirm_button = gr.Button(value='Confirm identity', elem_classes=['identity_button', IDENTITY_HIDDEN], elem_id="identity_confirm_button")
+                                identity_unbind_button = gr.Button(value='Unbind identity', min_width=35, elem_classes=['identity_button', IDENTITY_HIDDEN], elem_id="identity_unbind_button")
                 
                     identity_input = [identity_nick_input, identity_areacode, identity_tele_input, identity_qr]
                     identity_input_info = [input_id_info, state_topbar]
                     identity_ctrls = [identity_note_info, input_identity, input_id_display, identity_vcode_input, identity_verify_button, identity_phrase_input, identity_phrases_set_button, identity_phrases_confirm_button, identity_confirm_button, identity_unbind_button]
-                    identity_flow_rows = [identity_vcode_row, identity_phrase_row]
-
-                    def _identity_stage_from_base(base):
-                        def is_visible(index):
-                            return len(base) > index and isinstance(base[index], dict) and base[index].get("visible") is True
-                        if is_visible(3) or is_visible(4):
-                            return "vcode"
-                        if is_visible(5):
-                            if is_visible(8):
-                                return "confirm"
-                            if is_visible(9):
-                                return "unbind"
-                            if is_visible(7):
-                                return "phrase_confirm"
-                            if is_visible(6):
-                                return "phrase_set"
-                            return "phrase"
-                        return "input" if is_visible(1) else "summary"
-
-                    def _identity_flow_row_updates(result):
-                        base = list(result)
-                        stage = _identity_stage_from_base(base)
-                        vcode_visible = any(isinstance(item, dict) and item.get("visible") is True for item in base[3:5])
-                        phrase_visible = any(isinstance(item, dict) and item.get("visible") is True for item in base[5:10])
-                        util.log_ui_trace(
-                            logger,
-                            "[UI-TRACE] identity.webui_flow_rows | stage=%s, base_len=%s, vcode_visible=%s, phrase_visible=%s, "
-                            "ctrl3=%s, ctrl4=%s, ctrl5=%s, ctrl8=%s, tail_len=%s",
-                            stage,
-                            len(base),
-                            vcode_visible,
-                            phrase_visible,
-                            base[3] if len(base) > 3 else None,
-                            base[4] if len(base) > 4 else None,
-                            base[5] if len(base) > 5 else None,
-                            base[8] if len(base) > 8 else None,
-                            max(0, len(base) - 10),
-                        )
-                        return [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + base[:10] + base[10:]
-
-                    def change_identity_flow():
-                        base = list(simpleai.change_identity())
-                        util.log_ui_trace(logger, "[UI-TRACE] identity.change_flow | stage=input, base_len=%s", len(base))
-                        return ["input"] + base[:10] + base[10:]
-
-                    def bind_identity_flow(nick, areacode, tele):
-                        return _identity_flow_row_updates(simpleai.bind_identity(nick, areacode, tele))
-
-                    def verify_identity_flow(input_id_info, state, vcode):
-                        return _identity_flow_row_updates(simpleai.verify_identity(input_id_info, state, vcode))
-
-                    def set_phrases_flow(input_id_info, state, phrase, steps):
-                        return _identity_flow_row_updates(simpleai.set_phrases(input_id_info, state, phrase, steps))
-
-                    def trigger_input_identity_flow(img):
-                        return _identity_flow_row_updates(simpleai.trigger_input_identity(img))
-
                     def refresh_identity_activation_guard(state_params, opened, activation_confirmed=False):
                         copy_text = simpleai.get_multi_user_activation_copy(state_params)
                         activation_confirmed = bool(activation_confirmed)
                         guard_visible = bool(opened and simpleai.requires_multi_user_activation(activation_confirmed))
                         return [
-                            gr_update(visible=guard_visible),
+                            identity_control_visibility(identity_activation_guard, guard_visible),
                             gr_update(value=copy_text["notice"]),
                             gr_update(
                                 label=copy_text["mode_label"],
@@ -6455,11 +6397,10 @@ with shared.gradio_root:
                             state_params["identity_dialog"] = True
                             return [
                                 gr_update(visible=True),
-                                gr_update(visible=False),
+                                identity_control_visibility(identity_activation_guard, False),
                                 gr_update(value=copy_text["ready"]),
-                                gr_update(visible=True),
+                                identity_control_visibility(input_identity, True),
                                 gr_update(value=simpleai.get_identity_dialog_note(None, state_params.get("__lang"))),
-                                "input",
                                 True,
                                 state_params,
                             ]
@@ -6467,11 +6408,10 @@ with shared.gradio_root:
                             state_params["identity_dialog"] = False
                             return [
                                 gr_update(visible=False),
-                                gr_update(visible=False),
+                                identity_control_visibility(identity_activation_guard, False),
                                 gr_update(value=copy_text["keep_local"]),
-                                gr_update(visible=False),
+                                identity_control_visibility(input_identity, False),
                                 gr_update(value=simpleai.get_identity_dialog_note(None, state_params.get("__lang"))),
-                                "closed",
                                 False,
                                 state_params,
                             ]
@@ -6479,31 +6419,40 @@ with shared.gradio_root:
                             state_params["identity_dialog"] = True
                             return [
                                 gr_update(visible=True),
-                                gr_update(visible=True),
+                                identity_control_visibility(identity_activation_guard, True),
                                 gr_update(value=copy_text["incomplete"]),
-                                gr_update(visible=False),
+                                identity_control_visibility(input_identity, False),
                                 skip_component_update(),
-                                "activation",
                                 False,
                                 state_params,
                             ]
                         state_params["identity_dialog"] = True
                         return [
                             gr_update(visible=True),
-                            gr_update(visible=False),
+                            identity_control_visibility(identity_activation_guard, False),
                             gr_update(value=copy_text["ready"]),
-                            gr_update(visible=True),
+                            identity_control_visibility(input_identity, True),
                             gr_update(value=copy_text["ready"]),
-                            "input",
                             True,
                             state_params,
                         ]
 
-                    identity_bind_button.click(bind_identity_flow, inputs=[identity_nick_input, identity_areacode, identity_tele_input], outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [input_id_info], show_progress=False)
-                    identity_change_button.click(change_identity_flow,  outputs=[identity_stage_state] + identity_ctrls + identity_input, show_progress=False)
-                    identity_verify_button.click(verify_identity_flow, inputs=identity_input_info + [identity_vcode_input], outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls, show_progress=False)
-                    identity_phrases_set_button.click(lambda a, b, c: set_phrases_flow(a,b,c,'set'), inputs=identity_input_info + [identity_phrase_input], outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [current_id_info, current_upstream_status, identity_export_btn], show_progress=False)
-                    identity_qr.upload(trigger_input_identity_flow, inputs=identity_qr, outputs=[identity_stage_state] + identity_flow_rows + identity_ctrls + [input_id_info], show_progress=False, queue=False)
+                    def bind_identity_form_action(listener, fn, inputs=None, extra_outputs=(), *, queue=True):
+                        outputs = identity_ctrls + list(extra_outputs)
+                        listener(
+                            lambda *args: identity_control_updates(outputs, fn(*args)),
+                            inputs=inputs, outputs=outputs, show_progress=False, queue=queue,
+                        )
+
+                    bind_identity_form_action(identity_bind_button.click, simpleai.bind_identity,
+                                              [identity_nick_input, identity_areacode, identity_tele_input], [input_id_info])
+                    bind_identity_form_action(identity_change_button.click, simpleai.change_identity, extra_outputs=identity_input)
+                    bind_identity_form_action(identity_verify_button.click, simpleai.verify_identity,
+                                              identity_input_info + [identity_vcode_input])
+                    bind_identity_form_action(identity_phrases_set_button.click, lambda a, b, c: simpleai.set_phrases(a, b, c, 'set'),
+                                              identity_input_info + [identity_phrase_input],
+                                              [current_id_info, current_upstream_status, identity_export_btn])
+                    bind_identity_form_action(identity_qr.upload, simpleai.trigger_input_identity, identity_qr, [input_id_info], queue=False)
                 
                 nav_bars = topbar_layout.nav_bars
                 bind_topbar_store_events(
@@ -13880,8 +13829,6 @@ with shared.gradio_root:
         identity_confirm_button=identity_confirm_button,
         identity_unbind_button=identity_unbind_button,
         identity_ctrls=identity_ctrls,
-        identity_flow_rows=identity_flow_rows,
-        identity_stage_state=identity_stage_state,
         identity_input=identity_input,
         current_id_info=current_id_info,
         current_upstream_status=current_upstream_status,

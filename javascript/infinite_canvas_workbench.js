@@ -10404,6 +10404,7 @@
             },
             configSource: {
                 getVlmContextWindows: () => VLM_CONTEXT_WINDOWS,
+                getVlmModelCatalog: () => VLM_MODEL_CATALOG,
                 getVlmDefaultVersion: () => VLM_VERSION_CHOICES[0],
                 getVlmChatDefaultFontSize: () => VLM_CHAT_DEFAULT_FONT_SIZE,
                 getVlmChatDefaultMaxHistory: () => VLM_CHAT_DEFAULT_MAX_HISTORY,

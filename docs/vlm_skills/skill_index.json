@@ -70,6 +70,24 @@
       "contract_summary": "MOSS 自然语言或区域 Layout；保留画面文字原文，由区域编辑器转换中心坐标。"
     },
     {
+      "key": "moss_reference_prompting_en",
+      "title": "MOSS-Reference Prompting",
+      "doc": "moss_reference_prompting_en.md",
+      "language": "en",
+      "ownership": "hybrid",
+      "source": {"repository": "bag3labo/moss-image-edit-charref-v2", "path": "README.md"},
+      "contract_summary": "One anime character reference; write comma-separated English tags for the new scene, pose and framing."
+    },
+    {
+      "key": "moss_reference_prompting_cn",
+      "title": "MOSS 角色参考提示词",
+      "doc": "moss_reference_prompting_cn.md",
+      "language": "cn",
+      "ownership": "hybrid",
+      "source": {"repository": "bag3labo/moss-image-edit-charref-v2", "path": "README.md"},
+      "contract_summary": "一张二次元角色参考图，用逗号分隔的英文标签描述新场景、姿势和构图。"
+    },
+    {
       "key": "ownership",
       "title": "Skill Ownership And Edit Boundaries",
       "doc": "skill_ownership.md",

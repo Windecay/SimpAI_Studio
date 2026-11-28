@@ -6,7 +6,7 @@ import struct
 import threading
 import time
 
-from modules.llama_cpp_runtime import LLAMA_CPP_N_CTX_MAX
+from modules.llama_cpp_runtime import LLAMA_CPP_N_CTX_MAX, normalize_llama_cpp_n_ctx
 from modules.pe_models import prompt_expander_template, prompt_expander_vlm_task
 
 
@@ -657,6 +657,9 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
     backend = str(config.get("backend") or ("llamacpp" if config.get("is_llamacpp") else "transformers"))
     source_catalog = str(config.get("source_catalog") or ("LLM" if backend == "llamacpp" else "llms"))
     capabilities = list(config.get("capabilities") or (["text", "image"] if backend == "llamacpp" else ["text"]))
+    default_context = int(config.get("n_ctx") or GGUF_RUNTIME_CONTEXT_DEFAULT)
+    configured_context_window = config.get("context_window")
+    context_window = int(configured_context_window or default_context)
     resolved_files = []
     expected_files = []
     vision_available = False
@@ -667,6 +670,7 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
             names.append(config["gguf_file"])
         if config.get("mmproj_file") and config["mmproj_file"] not in names:
             names.append(config["mmproj_file"])
+        gguf_name = str(config.get("gguf_file") or "").replace("\\", "/")
         mmproj_name = str(config.get("mmproj_file") or "").replace("\\", "/")
         for name in names:
             relative_path = os.path.join(model_name, str(name)).replace("\\", "/")
@@ -675,6 +679,8 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
             if found:
                 resolved_files.append(found)
                 normalized_name = str(name).replace("\\", "/")
+                if not configured_context_window and normalized_name == gguf_name:
+                    context_window = gguf_context_window(found, default=default_context)
                 if mmproj_name and (normalized_name == mmproj_name or normalized_name.endswith(f"/{mmproj_name}")):
                     vision_available = True
     elif backend == "comfy_textgen":
@@ -711,6 +717,10 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
         "vision_available": vision_available,
         "vision_status": vision_status,
     })
+    if backend == "llamacpp":
+        context_window = normalize_llama_cpp_n_ctx(context_window)
+        runtime_config["context_window"] = context_window
+        runtime_config["n_ctx"] = normalize_llama_cpp_n_ctx(default_context, maximum=context_window)
     return {
         "id": version,
         "label": label,
@@ -720,7 +730,7 @@ def _curated_item(version, config, llm_roots, text_encoder_roots):
         "source_catalog": source_catalog,
         "architecture": str(config.get("architecture") or config.get("chat_handler") or ""),
         "capabilities": capabilities,
-        "context_window": int(config.get("n_ctx") or 8192),
+        "context_window": context_window,
         "installed": installed,
         "downloadable": bool(urls),
         "recommended": bool(config.get("recommended", True)),

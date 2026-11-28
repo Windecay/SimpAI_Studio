@@ -111,6 +111,7 @@ IMAGE_GENERATION_TASKS = {
 }
 VIDEO_GENERATION_TASKS = {
     "video_edit",
+    "video_upscale",
     "text_to_video",
     "image_to_video",
     "multi_image_to_video",
@@ -130,7 +131,7 @@ IMAGE_INPUT_GENERATION_TASKS = (IMAGE_GENERATION_TASKS - {"text_to_image"}) | {
     "image_audio_to_video",
 }
 AUDIO_INPUT_GENERATION_TASKS = {"audio_to_video", "image_audio_to_video", "video_audio_to_video", "video_edit"}
-VIDEO_INPUT_GENERATION_TASKS = {"video_audio_to_video", "video_edit"}
+VIDEO_INPUT_GENERATION_TASKS = {"video_audio_to_video", "video_edit", "video_upscale"}
 MULTI_IMAGE_GENERATION_TASKS = {
     "multi_image_edit",
     "image_style_transfer",
@@ -268,7 +269,7 @@ CREATIVE_ASSISTANT_SYSTEM = (
     "Krea2-Turbo and Krea2-ImageEdit use a multilingual Qwen3-VL 4B text encoder. For a Chinese request, write their executable prompt in fluent Chinese; for an English request, use English. Never translate a Chinese request to English merely because Krea or Krea2 was selected. "
     "Flux2 presets use a multilingual Qwen text encoder. Presets whose task_method ends with `_cn`, or whose text encoder is Qwen, must preserve the user's request language instead of applying the legacy FLUX.1/T5 English-only rule. "
     "Use image_detail_enhance for automatic face, hand, eye, or local detail repair through a Classic Preset Enhance workflow, and include enhance_targets using only face, hand, and eye. "
-    "Use the matching specialized task when requested: text_to_video, image_to_video, multi_image_to_video, image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
+    "Use the matching specialized task when requested: text_to_video, image_to_video, multi_image_to_video, video_upscale, image_upscale, image_restore, image_detail_enhance, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
     "For object or attribute transfer between two images, use image_object_transfer with the target/base image first as <image1> and the reference second as <image2>. The application defaults to Qwen2.1-Edit without requiring a painted mask; do not ask for one before executing. "
     "When the user asks the character or person in image 1 to wear clothing or an outfit from image 2, use image_object_transfer with image 1 first as the target and image 2 second as the clothing reference. This is an image edit, never text_to_image. The application prefers QwenOutfitSwap with its preset-defined LoRA when ready, also without requiring a painted mask. Preserve a request for a specific garment or retained shoes/accessories; never expand it to a compulsory full-outfit change. Color, texture or pattern edits and instructions to preserve clothing use the general editor. Keep the existing automatic-generation or confirmation preference. "
     "For image_outpaint, prefer QwenOutpaint when ready, with OneKey-Outpaint as the Flux alternative. For QwenOutpaint, begin with 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.' and optionally append Scene: with the requested continuation in the user's language. Use the English FLUX/T5 instruction contract only when OneKey-Outpaint is selected. Express the requested expansion as percentage intent in outpaint.up/down/left/right; default to 15 for each direction and use 0 for directions the user excluded. "
@@ -1277,6 +1278,8 @@ def _generation_task_allowed_media_types(task):
         return {"audio"}
     if normalized_task == "image_audio_to_video":
         return {"image", "audio"}
+    if normalized_task == "video_upscale":
+        return {"video"}
     if normalized_task in {"video_audio_to_video", "video_edit"}:
         return {"image", "video", "audio"}
     return set(CREATIVE_REFERENCE_MEDIA_LIMITS)
@@ -1496,6 +1499,8 @@ def _normalize_preset_capabilities(value, limit=100):
                 continue
             if duration_value >= 0:
                 normalized_item[duration_key] = duration_value
+        if item.get("automatic_routing") is False:
+            normalized_item["automatic_routing"] = False
         normalized.append(normalized_item)
         if len(normalized) >= max(1, min(200, int(limit or 100))):
             break
@@ -5227,7 +5232,7 @@ def _infer_music_generation_task(text, media_refs=None, available_media_refs=Non
 def _normalize_generation_task(value, media_refs, intent_text="", available_media_refs=None, *, infer_task=True):
     task_key = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
     task = GENERATION_TASK_ALIASES.get(task_key, task_key)
-    if not infer_task and task in GENERATION_TASKS:
+    if task == "video_upscale" or (not infer_task and task in GENERATION_TASKS):
         return task
     counts = _generation_media_counts(media_refs, available_media_refs)
     inferred_task = _infer_specialized_generation_task(intent_text)
@@ -5749,7 +5754,7 @@ def normalize_creative_task_request(item, available_media_refs=None, user_messag
     }
     if ignore_references:
         request["reference_policy"] = "none"
-    if task in VIDEO_GENERATION_TASKS:
+    if task in VIDEO_GENERATION_TASKS and task != "video_upscale":
         duration = _normalize_creative_video_duration(
             source.get("video_duration")
             or source.get("duration_seconds")
@@ -5841,8 +5846,9 @@ def compile_creative_execution_plan(
         ]
     route_rows = [
         route for route in route_rows
-        if str(route["capability"].get("name") or "").casefold() != "onekeykontext"
-        or requested_preset.casefold() == "onekeykontext"
+        if (route["capability"].get("automatic_routing") is not False
+            and str(route["capability"].get("name") or "").casefold() != "onekeykontext")
+        or str(route["capability"].get("name") or "").casefold() == requested_preset.casefold()
     ]
 
     if task == "image_object_transfer" and not _is_outfit_transfer_request(intent_text):
@@ -6051,6 +6057,7 @@ def _compatible_generation_preset(preset, task, media_counts, preset_capabilitie
         item for item in capabilities
         if _preset_supports_generation_task(item.get("name"), task, media_counts, capabilities)
         and str(item.get("name") or "").casefold() != "onekeykontext"
+        and item.get("automatic_routing") is not False
         and (task != "image_object_transfer" or str(item.get("name") or "").lower() != "qwenoutfitswap"
              or _is_outfit_transfer_request(instruction) or current.lower() == "qwenoutfitswap")
     ]
